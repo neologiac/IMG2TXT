@@ -2,7 +2,7 @@
 
 ## Aperçu
 
-IMG2TXT est un outil simple convertit efficacement des images en texte. Il traite récursivement les dossiers, préservant la structure dans les fichiers de sortie. C'est une utilisation basique de NodeJS et de la librairie tesseract.js.
+IMG2TXT est un outil simple qui convertit efficacement des images en texte. Il traite récursivement les dossiers, préservant la structure dans les fichiers de sortie. C'est une utilisation basique de NodeJS et de la librairie tesseract.js.
 
 ## Prérequis
 
