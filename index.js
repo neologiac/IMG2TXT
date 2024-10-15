@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 const path = require('path');
 const { createWorker, createScheduler } = require('tesseract.js');
-const fs = require("fs").promises;
+const fs = require('fs').promises;
 
 const inputDir = './input';
 const outputDir = './output';
-const numWorkers = 2; // Nombre de workers à utiliser
+const numWorkers = 4;
 
 function cleanText(text) {
-    const paragraphs = text.split(/\n\s*\n/);
-    return paragraphs.map(paragraph => {
-        let cleaned = paragraph.replace(/\n/g, ' ');
-        cleaned = cleaned.replace(/(\w+)-\s+(\w+)/g, '$1$2');
-        cleaned = cleaned.replace(/\s+/g, ' ');
-        return cleaned.trim();
-    }).join('\n\n');
+    return text
+        .split(/\n\s*\n/)
+        .map(paragraph => paragraph.replace(/\n/g, ' ')
+            .replace(/(\w+)-\s+(\w+)/g, '$1$2')
+            .replace(/\s+/g, ' ').trim())
+        .join('\n\n');
 }
 
 async function processFile(scheduler, filePath, outputPath) {
@@ -30,19 +29,29 @@ async function processFile(scheduler, filePath, outputPath) {
 
 async function getFiles(dir) {
     const entries = await fs.readdir(dir, { withFileTypes: true });
-    const files = await Promise.all(entries.map(async (entry) => {
-        const res = path.resolve(dir, entry.name);
-        return entry.isDirectory() ? getFiles(res) : res;
-    }));
-    return files.flat();
+    return entries.reduce(async (filesPromise, entry) => {
+        const files = await filesPromise;
+        const res = path.join(dir, entry.name);
+        return entry.isDirectory() ? [...files, ...(await getFiles(res))] : [...files, res];
+    }, Promise.resolve([]));
 }
 
 async function ensureDirectoryExistence(filePath) {
     const dirname = path.dirname(filePath);
     try {
         await fs.access(dirname);
-    } catch (error) {
+    } catch {
         await fs.mkdir(dirname, { recursive: true });
+    }
+}
+
+async function ensureInputDirectoryExists() {
+    try {
+        await fs.access(inputDir);
+        console.log(`Le dossier ${inputDir} existe.`);
+    } catch {
+        console.log(`Le dossier ${inputDir} n'existe pas, création en cours...`);
+        await fs.mkdir(inputDir, { recursive: true });
     }
 }
 
@@ -60,16 +69,24 @@ async function cleanOutputDirectory(dir) {
 
 (async () => {
     try {
+        console.log("Vérification du dossier input...");
+        await ensureInputDirectoryExists();
+
         console.log("Nettoyage du dossier de sortie...");
-        await cleanOutputDirectory(outputDir);
+        const cleanOutputDirPromise = cleanOutputDirectory(outputDir);
 
+        // Création des workers en parallèle du nettoyage
         const scheduler = createScheduler();
-        const workers = await Promise.all(
-            Array(numWorkers).fill(0).map(() => createWorker('fra'))
-        );
-        workers.forEach(worker => scheduler.addWorker(worker));
+        const workerPromises = Array.from({ length: numWorkers }, () => createWorker('fra'));
+        const filesPromise = getFiles(inputDir);
 
-        const files = await getFiles(inputDir);
+        // Nettoyage du dossier output
+        await cleanOutputDirPromise;
+
+        // Ajout des workers à mesure qu'ils sont prêts
+        (await Promise.all(workerPromises)).forEach(worker => scheduler.addWorker(worker));
+
+        const files = await filesPromise;
         console.log("\nTraitement des fichiers dans le dossier input et ses sous-dossiers:");
 
         const jobs = files.map(async (filePath) => {
@@ -83,6 +100,7 @@ async function cleanOutputDirectory(dir) {
 
         await Promise.all(jobs);
 
+        // Terminer les workers
         await scheduler.terminate();
     } catch (err) {
         console.error("Une erreur est survenue :", err);
