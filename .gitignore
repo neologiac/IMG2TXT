@@ -2,6 +2,9 @@
 input/*
 output/*
 
+#tesseract data
+*.traineddata
+
 # Node.js
 node_modules/
 npm-debug.log
